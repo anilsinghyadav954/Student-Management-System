@@ -1,0 +1,10 @@
+process.env.NODE_ENV = "test";
+process.env.JWT_SECRET = "test-jwt-secret-do-not-use-in-production";
+process.env.JWT_EXPIRE = "7d";
+process.env.JWT_REFRESH_SECRET = "test-refresh-secret-do-not-use-in-production";
+process.env.JWT_REFRESH_EXPIRE = "30d";
+process.env.BCRYPT_SALT_ROUNDS = "4"; // low cost factor — faster test runs, security doesn't matter for test data
+process.env.OTP_EXPIRE_MINUTES = "10";
+process.env.FROM_NAME = "SMS Test";
+process.env.FROM_EMAIL = "test@example.com";
+process.env.CLIENT_URL = "http://localhost:5173";
