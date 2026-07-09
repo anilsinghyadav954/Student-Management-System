@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🎓 Student Management System (SMS)
 
 A full-stack, production-ready **Student Management System** built with the **MERN stack**. Two role-based dashboards (Admin & Student), JWT authentication with OTP-based password recovery, attendance & marks tracking with auto-calculated grades, a notice board, and PDF/Excel export — all wrapped in a responsive, dark-mode-ready UI.
@@ -205,3 +206,7 @@ All endpoints are prefixed with `/api`. Full request/response contracts are docu
 ## 📄 License
 
 MIT — free to use for learning, portfolio, or as a foundation for your own project.
+=======
+# Student-Management-System
+In this project, We explained that How to store all data of any Student in the technical way.
+>>>>>>> a0f5fd077f70fd1f7be20dead3fd3959ab774a88
