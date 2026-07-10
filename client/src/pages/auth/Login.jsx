@@ -5,11 +5,12 @@ import { FiMail, FiLock, FiEye, FiEyeOff } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 const Login = () => {
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [form, setForm] = useState({ email: "", password: "" });
+  const [loginType, setLoginType] = useState("admin"); // purely a UI/UX aid — see handleSubmit for why
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -35,6 +36,20 @@ const Login = () => {
     setSubmitting(true);
     try {
       const loggedInUser = await login(form.email, form.password);
+
+      // The server is the real source of truth for role — this check is
+      // purely a UX nicety so someone who picks the wrong tab (e.g. an
+      // admin accidentally on the "Student" tab) gets a clear, specific
+      // message instead of just landing on an unexpected dashboard.
+      if (loggedInUser.role !== loginType) {
+        await logout();
+        toast.error(
+          `This email belongs to an ${loggedInUser.role} account. Please switch to the "${loggedInUser.role === "admin" ? "Admin" : "Student"}" tab and sign in again.`
+        );
+        setSubmitting(false);
+        return;
+      }
+
       toast.success(`Welcome back, ${loggedInUser.name}!`);
 
       // Redirect to wherever the user was trying to go, or their dashboard
@@ -63,6 +78,34 @@ const Login = () => {
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Sign in to access your dashboard
           </p>
+        </div>
+
+        {/* Purely a UI aid — the server independently verifies the real role
+            from the database regardless of which tab is selected. This just
+            gives a clearer error if someone picks the wrong tab. */}
+        <div className="mb-5 grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+          <button
+            type="button"
+            onClick={() => setLoginType("admin")}
+            className={`rounded-md py-2 text-sm font-medium transition-colors ${
+              loginType === "admin"
+                ? "bg-white text-primary-600 shadow-sm dark:bg-slate-700 dark:text-primary-400"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            Admin
+          </button>
+          <button
+            type="button"
+            onClick={() => setLoginType("student")}
+            className={`rounded-md py-2 text-sm font-medium transition-colors ${
+              loginType === "student"
+                ? "bg-white text-primary-600 shadow-sm dark:bg-slate-700 dark:text-primary-400"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            Student
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} noValidate className="card space-y-5">

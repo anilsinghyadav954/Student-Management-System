@@ -151,8 +151,8 @@ const StudentFormModal = ({ student, onSuccess, onCancel }) => {
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Full Name" name="name" value={form.name} error={errors.name} onChange={handleChange} />
-        {!isEdit && <Field label="Email" name="email" type="email" value={form.email} error={errors.email} onChange={handleChange} />}
-        {!isEdit && <Field label="Password" name="password" type="password" value={form.password} error={errors.password} onChange={handleChange} />}
+{!isEdit && <Field label="Email" name="email" type="email" autoComplete="off" value={form.email} error={errors.email} onChange={handleChange} />}
+{!isEdit && <Field label="Password" name="password" type="password" autoComplete="new-password" value={form.password} error={errors.password} onChange={handleChange} />}
         <Field label="Phone" name="phone" placeholder="10-digit number" value={form.phone} error={errors.phone} onChange={handleChange} />
         <Field label="Class" name="class" placeholder="e.g. 10" value={form.class} error={errors.class} onChange={handleChange} />
         <Field label="Section" name="section" placeholder="e.g. A" value={form.section} error={errors.section} onChange={handleChange} />

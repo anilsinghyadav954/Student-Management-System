@@ -15,10 +15,13 @@ import { uploadToCloudinary, deleteFromCloudinary } from "../middleware/uploadMi
  */
 const generateStudentId = async () => {
   const year = new Date().getFullYear();
-  const count = await Student.countDocuments({
-    studentId: new RegExp(`^SMS-${year}-`),
-  });
-  const sequence = String(count + 1).padStart(4, "0");
+
+  const highest = await Student.findOne({ studentId: new RegExp(`^SMS-${year}-`) })
+    .sort({ studentId: -1 })
+    .select("studentId");
+
+  const nextSequence = highest ? Number(highest.studentId.split("-")[2]) + 1 : 1;
+  const sequence = String(nextSequence).padStart(4, "0");
   return `SMS-${year}-${sequence}`;
 };
 

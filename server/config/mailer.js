@@ -1,4 +1,6 @@
 import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+dotenv.config();
 
 /**
  * Reusable Nodemailer transporter, configured from environment variables.
