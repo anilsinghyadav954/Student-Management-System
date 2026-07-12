@@ -17,6 +17,8 @@ import StudentView from "./pages/admin/students/StudentView.jsx";
 import AttendanceMark from "./pages/admin/attendance/AttendanceMark.jsx";
 import AttendanceReport from "./pages/admin/attendance/AttendanceReport.jsx";
 import MarksManage from "./pages/admin/marks/MarksManage.jsx";
+import BulkMarksEntry from "./pages/admin/marks/BulkMarksEntry.jsx";
+import ResultExport from "./pages/admin/marks/ResultExport.jsx";
 import NoticeManage from "./pages/admin/notices/NoticeManage.jsx";
 import AdminProfile from "./pages/admin/profile/AdminProfile.jsx";
 
@@ -73,6 +75,8 @@ function App() {
           <Route path="attendance" element={<AttendanceMark />} />
           <Route path="attendance/report" element={<AttendanceReport />} />
           <Route path="marks" element={<MarksManage />} />
+          <Route path="marks/bulk" element={<BulkMarksEntry />} />
+          <Route path="marks/export" element={<ResultExport />} />
           <Route path="notices" element={<NoticeManage />} />
           <Route path="profile" element={<AdminProfile />} />
         </Route>

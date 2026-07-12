@@ -49,6 +49,28 @@ const marksSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+
+    // ---- Added for Bulk Marks Entry / Result Export (additive only —
+    // all optional/defaulted, so existing single-entry marks records and
+    // the existing marksController functions are completely unaffected) ----
+    isAbsent: {
+      type: Boolean,
+      default: false,
+    },
+    examDate: {
+      type: Date,
+    },
+    // Denormalized onto the record (same pattern already used on
+    // Attendance) so bulk-entry/export queries can filter directly by
+    // class+section without an extra populate + in-memory filter.
+    class: {
+      type: String,
+      trim: true,
+    },
+    section: {
+      type: String,
+      trim: true,
+    },
   },
   { timestamps: true }
 );
@@ -58,6 +80,9 @@ marksSchema.index(
   { student: 1, subject: 1, examType: 1, academicYear: 1 },
   { unique: true }
 );
+// Speeds up the Bulk Marks Entry grid and Result Export queries, which
+// filter by class+section+subject+exam rather than by individual student.
+marksSchema.index({ class: 1, section: 1, subject: 1, examType: 1, academicYear: 1 });
 
 /**
  * Grade boundaries (percentage-based), standard 10-point-ish scale used
