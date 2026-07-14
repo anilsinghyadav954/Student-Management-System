@@ -75,6 +75,7 @@ function App() {
           <Route path="students/:id" element={<StudentView />} />
           <Route path="attendance" element={<AttendanceMark />} />
           <Route path="attendance/report" element={<AttendanceReport />} />
+          <Route path="attendance/holidays" element={<HolidayManage />} />
           <Route path="marks" element={<MarksManage />} />
           <Route path="marks/bulk" element={<BulkMarksEntry />} />
           <Route path="marks/export" element={<ResultExport />} />
