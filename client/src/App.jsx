@@ -16,6 +16,7 @@ import StudentList from "./pages/admin/students/StudentList.jsx";
 import StudentView from "./pages/admin/students/StudentView.jsx";
 import AttendanceMark from "./pages/admin/attendance/AttendanceMark.jsx";
 import AttendanceReport from "./pages/admin/attendance/AttendanceReport.jsx";
+import HolidayManage from "./pages/admin/attendance/HolidayManage.jsx";
 import MarksManage from "./pages/admin/marks/MarksManage.jsx";
 import BulkMarksEntry from "./pages/admin/marks/BulkMarksEntry.jsx";
 import ResultExport from "./pages/admin/marks/ResultExport.jsx";

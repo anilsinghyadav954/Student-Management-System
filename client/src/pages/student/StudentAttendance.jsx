@@ -4,11 +4,23 @@ import { toast } from "react-toastify";
 import { attendanceService } from "../../services/attendanceService";
 import Loader from "../../components/ui/Loader.jsx";
 import Badge from "../../components/ui/Badge.jsx";
+import AttendanceCalendar from "../../components/attendance/AttendanceCalendar.jsx";
+
+const months = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 const StudentAttendance = () => {
   const { studentProfile } = useOutletContext();
   const [attendance, setAttendance] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [calendarDays, setCalendarDays] = useState([]);
+  const [calendarLoading, setCalendarLoading] = useState(true);
 
   useEffect(() => {
     if (!studentProfile) return;
@@ -25,6 +37,22 @@ const StudentAttendance = () => {
     fetchData();
   }, [studentProfile]);
 
+  useEffect(() => {
+    if (!studentProfile) return;
+    const fetchCalendar = async () => {
+      setCalendarLoading(true);
+      try {
+        const { data } = await attendanceService.getCalendar(studentProfile._id, { month, year });
+        setCalendarDays(data.data.days);
+      } catch (error) {
+        toast.error("Failed to load calendar");
+      } finally {
+        setCalendarLoading(false);
+      }
+    };
+    fetchCalendar();
+  }, [studentProfile, month, year]);
+
   if (loading) return <Loader />;
 
   const percentColor = (pct) => {
@@ -37,7 +65,7 @@ const StudentAttendance = () => {
     <div className="space-y-5 animate-fade-in">
       <div>
         <h1 className="text-xl font-bold text-slate-900 dark:text-white">My Attendance</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Your full attendance history</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Your full attendance history, calculated on Working Days only</p>
       </div>
 
       <div className="card flex items-center gap-6">
@@ -45,9 +73,24 @@ const StudentAttendance = () => {
           {attendance?.percentage ?? 0}%
         </div>
         <div className="text-sm text-slate-500 dark:text-slate-400">
-          <p>{attendance?.totalDaysMarked ?? 0} total days marked</p>
-          <p className="text-xs">A percentage below 75% may affect eligibility for exams.</p>
+          <p>{attendance?.totalDaysMarked ?? 0} working days marked</p>
+          <p className="text-xs">Sundays and holidays are excluded from this percentage. Below 75% may affect exam eligibility.</p>
         </div>
+      </div>
+
+      <div className="card">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Attendance Calendar</h2>
+          <div className="flex gap-2">
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="input-field py-1.5 text-xs">
+              {months.map((m, i) => (
+                <option key={m} value={i + 1}>{m}</option>
+              ))}
+            </select>
+            <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="input-field w-24 py-1.5 text-xs" />
+          </div>
+        </div>
+        {calendarLoading ? <Loader /> : <AttendanceCalendar days={calendarDays} />}
       </div>
 
       <div className="card overflow-hidden !p-0">

@@ -15,6 +15,7 @@ import marksRoutes from "./routes/marksRoutes.js";
 import noticeRoutes from "./routes/noticeRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import holidayRoutes from "./routes/holidayRoutes.js";
 
 /**
  * Builds and returns the configured Express app WITHOUT connecting to the
@@ -89,6 +90,7 @@ app.use("/api/marks", marksRoutes);
 app.use("/api/notices", noticeRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/holidays", holidayRoutes);
 
 // ------------------------------------------------------------------
 // Error handling (must be last)

@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
-import { FiSave, FiSearch } from "react-icons/fi";
+import { FiSave, FiSearch, FiAlertTriangle } from "react-icons/fi";
 import { attendanceService } from "../../../services/attendanceService";
 import Loader from "../../../components/ui/Loader.jsx";
 import Badge from "../../../components/ui/Badge.jsx";
 import Tabs from "../../../components/ui/Tabs.jsx";
 
-const STATUS_OPTIONS = ["present", "absent", "late", "half-day"];
+const STATUS_OPTIONS = ["present", "absent", "late", "half-day", "leave"];
 
 const todayStr = () => new Date().toISOString().split("T")[0];
 
@@ -16,6 +16,7 @@ const AttendanceMark = () => {
   const [date, setDate] = useState(todayStr());
 
   const [grid, setGrid] = useState([]);
+  const [nonWorkingInfo, setNonWorkingInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -29,8 +30,17 @@ const AttendanceMark = () => {
     setSearched(true);
     try {
       const { data } = await attendanceService.getGrid({ class: className, section, date });
+      const { rows, nonWorkingInfo: nwInfo } = data.data;
+
+      setNonWorkingInfo(nwInfo?.blocked ? nwInfo : null);
+
+      if (nwInfo?.blocked) {
+        setGrid([]);
+        return;
+      }
+
       setGrid(
-        data.data.map((row) => ({
+        rows.map((row) => ({
           studentId: row.student._id,
           name: row.student.profile?.name,
           rollNumber: row.student.rollNumber,
@@ -52,15 +62,26 @@ const AttendanceMark = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await attendanceService.mark({
+      const res = await attendanceService.mark({
         date,
         class: className,
         section,
         records: grid.map((r) => ({ student: r.studentId, status: r.status, remarks: r.remarks })),
       });
+      if (res.data?.data?.attendanceDisabled) {
+        toast.error(`Attendance disabled: ${res.data.data.title}`);
+        setNonWorkingInfo(res.data.data);
+        return;
+      }
       toast.success("Attendance saved successfully");
     } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to save attendance");
+      const blocked = error.response?.data?.data;
+      if (blocked?.attendanceDisabled) {
+        toast.error(`Attendance disabled: ${blocked.title}`);
+        setNonWorkingInfo(blocked);
+      } else {
+        toast.error(error.response?.data?.message || "Failed to save attendance");
+      }
     } finally {
       setSaving(false);
     }
@@ -69,7 +90,7 @@ const AttendanceMark = () => {
   return (
     <div className="space-y-5 animate-fade-in">
       <div>
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Mark Attendance</h1>
+        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Attendance</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">Select a class, section, and date to begin</p>
       </div>
 
@@ -77,6 +98,7 @@ const AttendanceMark = () => {
         tabs={[
           { to: "/admin/attendance", label: "Mark Attendance", end: true },
           { to: "/admin/attendance/report", label: "Monthly Report" },
+          { to: "/admin/attendance/holidays", label: "Holidays" },
         ]}
       />
 
@@ -93,13 +115,30 @@ const AttendanceMark = () => {
 
       {loading && <Loader fullScreen={false} />}
 
-      {!loading && searched && grid.length === 0 && (
+      {!loading && nonWorkingInfo && (
+        <div className="card border-2 border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-900/10">
+          <div className="flex items-start gap-3">
+            <FiAlertTriangle className="mt-0.5 flex-shrink-0 text-xl text-red-500" />
+            <div>
+              <h3 className="font-semibold text-red-700 dark:text-red-400">Attendance Disabled</h3>
+              <p className="mt-1 text-sm text-red-600 dark:text-red-300">
+                <span className="font-medium">Reason:</span> {nonWorkingInfo.title}
+              </p>
+              <p className="text-sm text-red-600 dark:text-red-300">
+                <span className="font-medium">Description:</span> {nonWorkingInfo.description}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!loading && !nonWorkingInfo && searched && grid.length === 0 && (
         <div className="card text-center text-sm text-slate-500 dark:text-slate-400">
           No active students found for that class/section.
         </div>
       )}
 
-      {!loading && grid.length > 0 && (
+      {!loading && !nonWorkingInfo && grid.length > 0 && (
         <div className="card overflow-hidden !p-0">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-sm">
@@ -117,7 +156,7 @@ const AttendanceMark = () => {
                     <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{row.rollNumber}</td>
                     <td className="px-4 py-2.5 font-medium text-slate-900 dark:text-white">{row.name}</td>
                     <td className="px-4 py-2.5">
-                      <div className="flex gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
                         {STATUS_OPTIONS.map((status) => (
                           <button
                             key={status}

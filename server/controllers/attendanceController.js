@@ -1,14 +1,11 @@
 import asyncHandler from "express-async-handler";
 import Attendance from "../models/Attendance.js";
 import Student from "../models/Student.js";
+import Holiday from "../models/Holiday.js";
 import { sendResponse } from "../utils/apiResponse.js";
+import { getNonWorkingDayInfo, isSunday, toMidnightUTC } from "../utils/workingDayUtils.js";
+import { exportAttendancePDF, exportAttendanceExcel } from "../utils/attendanceExportUtils.js";
 
-/**
- * Ensures a student-role caller can only ever access their own records.
- * Admins bypass this check entirely. Sets a 403 and throws on mismatch —
- * the shared errorMiddleware reads the status from res.statusCode, so it
- * must be set here before throwing.
- */
 const assertOwnRecordOrAdmin = async (req, res, studentId) => {
   if (req.user.role === "admin") return;
   const ownStudent = await Student.findOne({ user: req.user._id }).select("_id");
@@ -18,21 +15,34 @@ const assertOwnRecordOrAdmin = async (req, res, studentId) => {
   }
 };
 
-/**
- * @desc   Mark attendance for an entire class/section on a given date in
- *         one call (upserts — re-marking the same day updates the record
- *         instead of erroring, which matters if a teacher corrects a
- *         mistake before the "edit" endpoint is used).
- *
- *         NOTE: uses find-or-build + .save() rather than
- *         findOneAndUpdate(..., { upsert: true }) — see the comment on
- *         addMarks in marksController.js for why: findOneAndUpdate skips
- *         pre('validate') document middleware, which is what normalizes
- *         the date to UTC midnight on this model.
- * @route  POST /api/attendance/mark
- * @body   { date, class, section, records: [{ student, status, remarks }] }
- * @access Private/Admin
- */
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const getMonthWorkingDayInfo = async (month, year) => {
+  const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
+  const activeHolidays = await Holiday.find({
+    date: {
+      $gte: new Date(Date.UTC(Number(year), Number(month) - 1, 1)),
+      $lte: new Date(Date.UTC(Number(year), Number(month) - 1, daysInMonth, 23, 59, 59)),
+    },
+    status: "active",
+  });
+  const holidayDates = new Set(activeHolidays.map((h) => h.date.toISOString().split("T")[0]));
+
+  let sundayCount = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const day = new Date(Date.UTC(Number(year), Number(month) - 1, d));
+    if (isSunday(day)) sundayCount++;
+  }
+
+  const holidayCount = holidayDates.size;
+  const workingDaysInMonth = daysInMonth - sundayCount - holidayCount;
+
+  return { daysInMonth, sundayCount, holidayCount, holidayDates, workingDaysInMonth, activeHolidays };
+};
+
 export const markAttendance = asyncHandler(async (req, res) => {
   const { date, class: className, section, records } = req.body;
 
@@ -41,8 +51,21 @@ export const markAttendance = asyncHandler(async (req, res) => {
     throw new Error("At least one attendance record is required");
   }
 
-  const dayStart = new Date(date);
-  dayStart.setUTCHours(0, 0, 0, 0);
+  const nonWorkingInfo = await getNonWorkingDayInfo(date);
+  if (nonWorkingInfo.blocked) {
+    return res.status(400).json({
+      success: false,
+      message: "Attendance cannot be marked on a non-working day",
+      data: {
+        attendanceDisabled: true,
+        reason: nonWorkingInfo.reason,
+        title: nonWorkingInfo.title,
+        description: nonWorkingInfo.description,
+      },
+    });
+  }
+
+  const dayStart = toMidnightUTC(date);
 
   const results = await Promise.all(
     records.map(async ({ student, status, remarks }) => {
@@ -72,11 +95,6 @@ export const markAttendance = asyncHandler(async (req, res) => {
   sendResponse(res, 200, `Attendance marked for ${results.length} student(s)`, results);
 });
 
-/**
- * @desc   Edit a single attendance record
- * @route  PUT /api/attendance/:id
- * @access Private/Admin
- */
 export const updateAttendance = asyncHandler(async (req, res) => {
   const { status, remarks } = req.body;
 
@@ -94,13 +112,6 @@ export const updateAttendance = asyncHandler(async (req, res) => {
   sendResponse(res, 200, "Attendance updated successfully", record);
 });
 
-/**
- * @desc   Get attendance for a specific class/section on a specific date
- *         (used to populate the "mark attendance" grid, pre-filled if
- *         already marked)
- * @route  GET /api/attendance?class=&section=&date=
- * @access Private/Admin
- */
 export const getAttendanceByClassDate = asyncHandler(async (req, res) => {
   const { class: className, section, date } = req.query;
 
@@ -109,18 +120,15 @@ export const getAttendanceByClassDate = asyncHandler(async (req, res) => {
     throw new Error("class, section, and date query params are required");
   }
 
+  const nonWorkingInfo = await getNonWorkingDayInfo(date);
+
   const students = await Student.find({ class: className, section, status: "active" })
     .populate("profile", "name email profileImage")
     .sort({ rollNumber: 1 });
 
-  const dayStart = new Date(date);
-  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayStart = toMidnightUTC(date);
 
-  const existingRecords = await Attendance.find({
-    class: className,
-    section,
-    date: dayStart,
-  });
+  const existingRecords = await Attendance.find({ class: className, section, date: dayStart });
   const recordMap = new Map(existingRecords.map((r) => [r.student.toString(), r]));
 
   const merged = students.map((student) => ({
@@ -128,15 +136,9 @@ export const getAttendanceByClassDate = asyncHandler(async (req, res) => {
     attendance: recordMap.get(student._id.toString()) || null,
   }));
 
-  sendResponse(res, 200, "Attendance grid fetched successfully", merged);
+  sendResponse(res, 200, "Attendance grid fetched successfully", { rows: merged, nonWorkingInfo });
 });
 
-/**
- * @desc   Monthly attendance report for a class/section — per-student
- *         present/absent/late counts and attendance percentage.
- * @route  GET /api/attendance/monthly-report?class=&section=&month=&year=
- * @access Private/Admin
- */
 export const getMonthlyReport = asyncHandler(async (req, res) => {
   const { class: className, section, month, year } = req.query;
 
@@ -145,53 +147,175 @@ export const getMonthlyReport = asyncHandler(async (req, res) => {
     throw new Error("class, section, month, and year query params are required");
   }
 
+  const { holidayDates, sundayCount, holidayCount, workingDaysInMonth } = await getMonthWorkingDayInfo(month, year);
+
   const startDate = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
   const endDate = new Date(Date.UTC(Number(year), Number(month), 0, 23, 59, 59));
 
   const students = await Student.find({ class: className, section }).populate("profile", "name");
 
-  const report = await Promise.all(
+  const rows = await Promise.all(
     students.map(async (student) => {
-      const records = await Attendance.find({
+      const allRecords = await Attendance.find({
         student: student._id,
         date: { $gte: startDate, $lte: endDate },
       });
+      const records = allRecords.filter((r) => {
+        const iso = r.date.toISOString().split("T")[0];
+        return !isSunday(r.date) && !holidayDates.has(iso);
+      });
 
-      const totalMarked = records.length;
       const present = records.filter((r) => r.status === "present").length;
       const absent = records.filter((r) => r.status === "absent").length;
       const late = records.filter((r) => r.status === "late").length;
       const halfDay = records.filter((r) => r.status === "half-day").length;
-      // Half-day counts as 0.5 present for percentage purposes
+      const leave = records.filter((r) => r.status === "leave").length;
+
       const effectivePresent = present + late + halfDay * 0.5;
-      const percentage = totalMarked > 0 ? Number(((effectivePresent / totalMarked) * 100).toFixed(1)) : 0;
+      const percentage = workingDaysInMonth > 0 ? Number(((effectivePresent / workingDaysInMonth) * 100).toFixed(1)) : 0;
 
       return {
         student: { id: student._id, studentId: student.studentId, name: student.profile?.name },
-        totalMarked,
+        rollNumber: student.rollNumber,
+        name: student.profile?.name,
         present,
         absent,
+        leave,
         late,
         halfDay,
+        holidayCount,
+        sundayCount,
+        workingDays: workingDaysInMonth,
         percentage,
       };
     })
   );
 
-  sendResponse(res, 200, "Monthly attendance report generated", report);
+  sendResponse(res, 200, "Monthly attendance report generated", {
+    rows,
+    meta: {
+      class: className,
+      section,
+      month: Number(month),
+      year: Number(year),
+      monthName: MONTH_NAMES[Number(month) - 1],
+      sundayCount,
+      holidayCount,
+      workingDaysInMonth,
+    },
+  });
 });
 
-/**
- * @desc   A single student's overall attendance percentage + recent history
- *         (used by both the admin's student-view page and the student's
- *         own dashboard)
- * @route  GET /api/attendance/student/:studentId
- * @access Private/Admin, Private/Student (own record — enforced in route)
- */
+export const exportMonthlyReportPDF = asyncHandler(async (req, res) => {
+  const { class: className, section, month, year } = req.query;
+  const { holidayDates, sundayCount, holidayCount, workingDaysInMonth } = await getMonthWorkingDayInfo(month, year);
+  const startDate = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
+  const endDate = new Date(Date.UTC(Number(year), Number(month), 0, 23, 59, 59));
+
+  const students = await Student.find({ class: className, section }).populate("profile", "name");
+  const rows = await Promise.all(
+    students.map(async (student) => {
+      const allRecords = await Attendance.find({ student: student._id, date: { $gte: startDate, $lte: endDate } });
+      const records = allRecords.filter((r) => {
+        const iso = r.date.toISOString().split("T")[0];
+        return !isSunday(r.date) && !holidayDates.has(iso);
+      });
+      const present = records.filter((r) => r.status === "present").length;
+      const absent = records.filter((r) => r.status === "absent").length;
+      const leave = records.filter((r) => r.status === "leave").length;
+      const late = records.filter((r) => r.status === "late").length;
+      const halfDay = records.filter((r) => r.status === "half-day").length;
+      const effectivePresent = present + late + halfDay * 0.5;
+      const percentage = workingDaysInMonth > 0 ? Number(((effectivePresent / workingDaysInMonth) * 100).toFixed(1)) : 0;
+      return {
+        rollNumber: student.rollNumber,
+        name: student.profile?.name,
+        present, absent, leave, holidayCount, sundayCount, workingDays: workingDaysInMonth, percentage,
+      };
+    })
+  );
+
+  exportAttendancePDF(res, {
+    class: className, section, month, year, monthName: MONTH_NAMES[Number(month) - 1], workingDaysInMonth,
+  }, rows);
+});
+
+export const exportMonthlyReportExcel = asyncHandler(async (req, res) => {
+  const { class: className, section, month, year } = req.query;
+  const { holidayDates, sundayCount, holidayCount, workingDaysInMonth } = await getMonthWorkingDayInfo(month, year);
+  const startDate = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
+  const endDate = new Date(Date.UTC(Number(year), Number(month), 0, 23, 59, 59));
+
+  const students = await Student.find({ class: className, section }).populate("profile", "name");
+  const rows = await Promise.all(
+    students.map(async (student) => {
+      const allRecords = await Attendance.find({ student: student._id, date: { $gte: startDate, $lte: endDate } });
+      const records = allRecords.filter((r) => {
+        const iso = r.date.toISOString().split("T")[0];
+        return !isSunday(r.date) && !holidayDates.has(iso);
+      });
+      const present = records.filter((r) => r.status === "present").length;
+      const absent = records.filter((r) => r.status === "absent").length;
+      const leave = records.filter((r) => r.status === "leave").length;
+      const late = records.filter((r) => r.status === "late").length;
+      const halfDay = records.filter((r) => r.status === "half-day").length;
+      const effectivePresent = present + late + halfDay * 0.5;
+      const percentage = workingDaysInMonth > 0 ? Number(((effectivePresent / workingDaysInMonth) * 100).toFixed(1)) : 0;
+      return {
+        rollNumber: student.rollNumber,
+        name: student.profile?.name,
+        present, absent, leave, holidayCount, sundayCount, workingDays: workingDaysInMonth, percentage,
+      };
+    })
+  );
+
+  await exportAttendanceExcel(res, {
+    class: className, section, month, year, monthName: MONTH_NAMES[Number(month) - 1], workingDaysInMonth,
+  }, rows);
+});
+
+export const getAttendanceCalendar = asyncHandler(async (req, res) => {
+  await assertOwnRecordOrAdmin(req, res, req.params.studentId);
+  const { month, year } = req.query;
+
+  const { daysInMonth, holidayDates, activeHolidays } = await getMonthWorkingDayInfo(month, year);
+  const holidayByDate = new Map(activeHolidays.map((h) => [h.date.toISOString().split("T")[0], h]));
+
+  const startDate = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
+  const endDate = new Date(Date.UTC(Number(year), Number(month), 0, 23, 59, 59));
+  const records = await Attendance.find({ student: req.params.studentId, date: { $gte: startDate, $lte: endDate } });
+  const recordByDate = new Map(records.map((r) => [r.date.toISOString().split("T")[0], r]));
+
+  const days = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateObj = new Date(Date.UTC(Number(year), Number(month) - 1, d));
+    const iso = dateObj.toISOString().split("T")[0];
+
+    if (isSunday(dateObj)) {
+      days.push({ date: iso, status: "sunday" });
+    } else if (holidayDates.has(iso)) {
+      const h = holidayByDate.get(iso);
+      days.push({ date: iso, status: "holiday", title: h.title, reason: h.reason, notes: h.notes });
+    } else {
+      const record = recordByDate.get(iso);
+      days.push({ date: iso, status: record ? record.status : null });
+    }
+  }
+
+  sendResponse(res, 200, "Attendance calendar fetched successfully", { days });
+});
+
 export const getStudentAttendance = asyncHandler(async (req, res) => {
   await assertOwnRecordOrAdmin(req, res, req.params.studentId);
 
-  const records = await Attendance.find({ student: req.params.studentId }).sort({ date: -1 });
+  const allRecords = await Attendance.find({ student: req.params.studentId }).sort({ date: -1 });
+  const activeHolidays = await Holiday.find({ status: "active" });
+  const holidayDates = new Set(activeHolidays.map((h) => h.date.toISOString().split("T")[0]));
+
+  const records = allRecords.filter((r) => {
+    const iso = r.date.toISOString().split("T")[0];
+    return !isSunday(r.date) && !holidayDates.has(iso);
+  });
 
   const total = records.length;
   const present = records.filter((r) => r.status === "present" || r.status === "late").length;
@@ -201,6 +325,6 @@ export const getStudentAttendance = asyncHandler(async (req, res) => {
   sendResponse(res, 200, "Attendance history fetched successfully", {
     percentage,
     totalDaysMarked: total,
-    history: records.slice(0, 30), // most recent 30 records
+    history: records.slice(0, 30),
   });
 });
