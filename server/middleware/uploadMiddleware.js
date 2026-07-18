@@ -2,9 +2,6 @@ import multer from "multer";
 import streamifier from "streamifier";
 import cloudinary from "../config/cloudinary.js";
 
-// Memory storage: files are buffered in RAM, then streamed straight to
-// Cloudinary. This avoids writing to disk, which matters because
-// Render's filesystem is ephemeral (files vanish on redeploy/restart).
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
@@ -23,11 +20,35 @@ export const upload = multer({
 });
 
 /**
+ * Separate multer instance for the Bulk Student Import feature — accepts
+ * spreadsheet files instead of images. Kept distinct from `upload` above
+ * so image uploads (profile photos) can never accidentally accept a
+ * spreadsheet, and vice versa.
+ */
+const spreadsheetFileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+    "application/vnd.ms-excel", // .xls
+    "text/csv",
+    "application/csv",
+  ];
+  const allowedExtensions = /\.(xlsx|xls|csv)$/i;
+  if (allowedTypes.includes(file.mimetype) || allowedExtensions.test(file.originalname)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only .xlsx, .xls, or .csv files are allowed"), false);
+  }
+};
+
+export const uploadSpreadsheet = multer({
+  storage,
+  fileFilter: spreadsheetFileFilter,
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB — enough headroom for a few thousand rows
+});
+
+/**
  * Streams a Multer in-memory file buffer up to Cloudinary and resolves
  * with the secure URL + public_id (needed later for deletion/replacement).
- *
- * @param {Buffer} fileBuffer
- * @param {string} folder - Cloudinary folder, e.g. "sms/profiles"
  */
 export const uploadToCloudinary = (fileBuffer, folder = "sms/profiles") => {
   return new Promise((resolve, reject) => {
@@ -48,7 +69,6 @@ export const uploadToCloudinary = (fileBuffer, folder = "sms/profiles") => {
 
 /**
  * Deletes a previously uploaded image from Cloudinary by its public_id.
- * Used when a user uploads a new profile photo, to avoid orphaned assets.
  */
 export const deleteFromCloudinary = async (publicId) => {
   if (!publicId) return;

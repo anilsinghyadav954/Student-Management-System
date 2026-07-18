@@ -71,6 +71,18 @@ const studentSchema = new mongoose.Schema(
       enum: ["active", "inactive", "graduated", "suspended"],
       default: "active",
     },
+
+    // ---- Added for Bulk Student Import (additive only — all optional,
+    // existing single-student Add/Edit flow is completely unaffected) ----
+    motherName: { type: String, trim: true, default: "" },
+    studentMobile: { type: String, trim: true, default: "" },
+    aadhaarNumber: { type: String, trim: true, default: "" },
+    category: { type: String, trim: true, default: "" }, // e.g. General/OBC/SC/ST — admin-defined, not hardcoded
+    house: { type: String, trim: true, default: "" },
+    previousSchool: { type: String, trim: true, default: "" },
+    academicSession: { type: String, trim: true, default: "" }, // e.g. "2025-2026"
+    transportRequired: { type: Boolean, default: false },
+    hostelRequired: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
@@ -78,7 +90,9 @@ const studentSchema = new mongoose.Schema(
 // A roll number must be unique within a given class + section (not globally)
 studentSchema.index({ class: 1, section: 1, rollNumber: 1 }, { unique: true });
 studentSchema.index({ status: 1 });
-studentSchema.index({ studentId: 1 });
+// Note: no separate index({ studentId: 1 }) here — `unique: true` on the
+// studentId field above already creates that index. Adding both caused
+// Mongoose's "Duplicate schema index" warning on startup.
 
 // Convenience virtual to populate name/email/profileImage from the linked User
 // without duplicating that data in this collection.

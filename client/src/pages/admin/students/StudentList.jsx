@@ -9,6 +9,7 @@ import ConfirmDialog from "../../../components/ui/ConfirmDialog.jsx";
 import Pagination from "../../../components/ui/Pagination.jsx";
 import Badge from "../../../components/ui/Badge.jsx";
 import Loader from "../../../components/ui/Loader.jsx";
+import Tabs from "../../../components/ui/Tabs.jsx";
 import StudentFormModal from "../../../components/students/StudentFormModal.jsx";
 
 const StudentList = () => {
@@ -91,6 +92,14 @@ const StudentList = () => {
           <FiPlus /> Add Student
         </button>
       </div>
+
+      <Tabs
+        tabs={[
+          { to: "/admin/students", label: "Student List", end: true },
+          { to: "/admin/students/bulk-import", label: "Bulk Student Import" },
+          { to: "/admin/students/promote", label: "Promote Students" },
+        ]}
+      />
 
       {/* Filters */}
       <div className="card">

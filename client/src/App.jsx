@@ -14,6 +14,9 @@ import AdminLayout from "./layouts/AdminLayout.jsx";
 import AdminDashboard from "./pages/admin/AdminDashboard.jsx";
 import StudentList from "./pages/admin/students/StudentList.jsx";
 import StudentView from "./pages/admin/students/StudentView.jsx";
+import BulkStudentImport from "./pages/admin/students/BulkStudentImport.jsx";
+import PromoteStudents from "./pages/admin/students/PromoteStudents.jsx";
+
 import AttendanceMark from "./pages/admin/attendance/AttendanceMark.jsx";
 import AttendanceReport from "./pages/admin/attendance/AttendanceReport.jsx";
 import HolidayManage from "./pages/admin/attendance/HolidayManage.jsx";
@@ -73,6 +76,9 @@ function App() {
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="students" element={<StudentList />} />
           <Route path="students/:id" element={<StudentView />} />
+          <Route path="students/bulk-import" element={<BulkStudentImport />} />
+          <Route path="students/promote" element={<PromoteStudents />} />
+
           <Route path="attendance" element={<AttendanceMark />} />
           <Route path="attendance/report" element={<AttendanceReport />} />
           <Route path="attendance/holidays" element={<HolidayManage />} />

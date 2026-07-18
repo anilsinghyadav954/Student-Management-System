@@ -1,4 +1,4 @@
-import { body, param } from "express-validator";
+import { body, param, query } from "express-validator";
 
 export const createStudentRules = [
   body("name").trim().notEmpty().withMessage("Name is required"),
@@ -25,3 +25,28 @@ export const updateStudentRules = [
 ];
 
 export const studentIdParamRule = [param("id").isMongoId().withMessage("Invalid student id")];
+
+// ---- Bulk Student Import (additive) ----
+
+export const executeImportRules = [
+  body("rows").isArray({ min: 1 }).withMessage("No rows to import"),
+  body("duplicateAction").optional().isIn(["skip", "update", "cancel"]).withMessage("Invalid duplicate action"),
+];
+
+// ---- Promote Students (additive) ----
+
+export const promotionCandidatesQueryRules = [
+  query("class").trim().notEmpty().withMessage("Class is required"),
+  query("section").trim().notEmpty().withMessage("Section is required"),
+];
+
+export const promotionExecuteRules = [
+  body("fromClass").trim().notEmpty().withMessage("From Class is required"),
+  body("fromSection").trim().notEmpty().withMessage("From Section is required"),
+  body("toClass").trim().notEmpty().withMessage("To Class is required"),
+  body("toSection").trim().notEmpty().withMessage("To Section is required"),
+  body("academicYear").trim().notEmpty().withMessage("Academic Year is required"),
+  body("promotions").isArray({ min: 1 }).withMessage("No students selected"),
+  body("promotions.*.student").isMongoId().withMessage("Invalid student id in promotions"),
+  body("promotions.*.result").isIn(["promoted", "retained"]).withMessage("Invalid promotion result"),
+];
